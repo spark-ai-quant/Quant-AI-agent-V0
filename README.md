@@ -133,24 +133,8 @@ OpenAI SDK（兼容 DeepSeek API）
 python-dotenv（环境变量管理）
 JoinQuant（策略回测平台）
 PyInstaller（可执行程序打包）
-八、项目结构说明
-Quant/
-│
-├── README.md
-├── web_launcher.py
-├── build_web_exe.ps1
-│
-└── Quant-AI-agent-main/
-    ├── main.py
-    ├── streamlit_app.py
-    ├── agent/
-    │   ├── ai_parser.py
-    │   └── code_generator.py
-    │
-    ├── templates/
-    ├── generated_strategy.py
-    └── tests/
-九、使用方式
+
+八、使用方式
 开发环境运行
 安装依赖
 
@@ -164,8 +148,8 @@ streamlit run streamlit_app.py
 双击 网页.exe
 浏览器自动打开页面
 使用完成后关闭窗口
-十、项目成果与特点
 
+九、项目成果与特点
 在当前版本中，项目已经完成从原型到系统的关键跃迁：
 
 1. 完整闭环系统
@@ -209,8 +193,7 @@ numpy warning
 
 👉 项目已具备“工具属性”
 
-十一、当前边界与后续方向
-
+十、当前边界与后续方向
 项目仍有较大扩展空间：
 
 1. 策略扩展
@@ -235,8 +218,8 @@ numpy warning
 UI优化
 策略管理面板
 历史记录
-十二、总结
 
+十一、总结
 Quant 项目已经从一个初始想法，发展为一个：
 
 可运行
