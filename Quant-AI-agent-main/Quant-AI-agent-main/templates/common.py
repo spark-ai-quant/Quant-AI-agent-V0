@@ -12,9 +12,9 @@ def get_stock_pool(context, stock_pool_type="all", stock_list=None):
 
     current_data = get_current_data()
 
-    # =========================
+    # ========================
     # 1️⃣ 获取原始股票池
-    # =========================
+    # ========================
     if stock_pool_type == "hs300":
         pool = get_index_stocks("000300.XSHG")
 
