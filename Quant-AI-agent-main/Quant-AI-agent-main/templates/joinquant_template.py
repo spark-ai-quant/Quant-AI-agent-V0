@@ -1,6 +1,33 @@
 def generate_template(lookback, stock_num):
 
     code = f"""
+from jqdata import *
+
+
+def _order_target_percent(context, security, percent):
+    if "order_target_value" in globals():
+        return order_target_value(security, context.portfolio.total_value * percent)
+    if hasattr(context, "order_target_value"):
+        return context.order_target_value(security, context.portfolio.total_value * percent)
+    if "order_target_percent" in globals():
+        return order_target_percent(security, percent)
+    if hasattr(context, "order_target_percent"):
+        return context.order_target_percent(security, percent)
+    raise NameError("order_target_percent is not defined in this environment")
+
+
+def _order_target_zero(context, security):
+    if "order_target" in globals():
+        return order_target(security, 0)
+    if "order_target_value" in globals():
+        return order_target_value(security, 0)
+    if hasattr(context, "order_target"):
+        return context.order_target(security, 0)
+    if hasattr(context, "order_target_value"):
+        return context.order_target_value(security, 0)
+    raise NameError("order_target is not defined in this environment")
+
+
 # JoinQuant Momentum Strategy
 # 自动生成策略
 
@@ -21,12 +48,12 @@ def trade(context):
 
     for stock in context.portfolio.positions:
         if stock not in top.index:
-            order_target(stock, 0)
+            _order_target_zero(context, stock)
 
     weight = 1 / len(top)
 
     for stock in top.index:
-        order_target_percent(stock, weight)
+        _order_target_percent(context, stock, weight)
 """
 
     return code

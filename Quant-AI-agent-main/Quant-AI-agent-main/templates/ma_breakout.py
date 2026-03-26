@@ -25,29 +25,113 @@ def generate(params):
     stock = params.get("stock_code", "000001.XSHE")
 
     return f"""
-# MA Breakout Strategy
+from jqdata import *
+import numpy as np
 
+
+# =========================
+# 统一下单接口
+# =========================
+def _order_target_percent(context, security, percent):
+    if "order_target_value" in globals():
+        return order_target_value(security, context.portfolio.total_value * percent)
+    if hasattr(context, "order_target_value"):
+        return context.order_target_value(security, context.portfolio.total_value * percent)
+    if "order_target_percent" in globals():
+        return order_target_percent(security, percent)
+    if hasattr(context, "order_target_percent"):
+        return context.order_target_percent(security, percent)
+    raise NameError("order_target_percent is not defined")
+
+
+def _order_target_zero(context, security):
+    if "order_target" in globals():
+        return order_target(security, 0)
+    if "order_target_value" in globals():
+        return order_target_value(security, 0)
+    if hasattr(context, "order_target"):
+        return context.order_target(security, 0)
+    if hasattr(context, "order_target_value"):
+        return context.order_target_value(security, 0)
+    raise NameError("order_target is not defined")
+
+
+# =========================
+# 初始化
+# =========================
 def initialize(context):
+    set_option('avoid_future_data', True)  # 防未来函数
+    set_option("use_real_price", True)
+
     g.stock = "{stock}"
     g.ma_period = {ma}
     g.threshold = {threshold}
-    run_daily(trade, time='open')
 
+    run_daily(trade, time='09:35')
+
+
+# =========================
+# 交易逻辑
+# =========================
 def trade(context):
-    df = get_price(g.stock, count=g.ma_period)
+    current_data = get_current_data()
 
-    # 防止数据不足
+    # 基本过滤（防踩坑🔥）
+    if g.stock not in current_data:
+        return
+
+    if current_data[g.stock].paused:
+        return
+
+    if current_data[g.stock].is_st:
+        return
+
+    # =========================
+    # 获取历史数据（无未来函数）
+    # =========================
+    df = attribute_history(
+        g.stock,
+        g.ma_period + 1,   # 多取一天用于确认趋势
+        "1d",
+        ["close"],
+        skip_paused=True
+    )
+
     if df is None or len(df) < g.ma_period:
         return
 
-    ma = df['close'].mean()
-    price = df['close'].iloc[-1]
+    # =========================
+    # 计算均线
+    # =========================
+    ma = df['close'][-g.ma_period:].mean()
 
-    # 突破买入
-    if price > ma * g.threshold:
-        order_target_percent(g.stock, 1)
+    # 当前价格（用最新收盘更稳）
+    price = df['close'][-1]
 
-    # 跌破均线卖出
-    elif price < ma:
-        order_target(g.stock, 0)
+    if price is None or price <= 0:
+        return
+
+    # 当前持仓
+    position = context.portfolio.positions.get(g.stock, None)
+    holding = position.total_amount if position else 0
+
+    # =========================
+    # 突破逻辑（优化版🔥）
+    # =========================
+    breakout = price > ma * g.threshold
+    breakdown = price < ma
+
+    # =========================
+    # 买入逻辑
+    # =========================
+    if breakout and holding == 0:
+        log.info(f"BUY {g.stock} price={price:.2f}, MA={ma:.2f}")
+        _order_target_percent(context, g.stock, 1.0)
+
+    # =========================
+    # 卖出逻辑
+    # =========================
+    elif breakdown and holding > 0:
+        log.info(f"SELL {g.stock} price={price:.2f}, MA={ma:.2f}")
+        _order_target_zero(context, g.stock)
 """
