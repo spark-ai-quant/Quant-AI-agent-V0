@@ -10,6 +10,16 @@ PARAM_SCHEMA = {
         "type": "int",
         "default": 10,
         "description": "持仓股票数量"
+    },
+    "stock_pool_type": {
+        "type": "str",
+        "default": "all",
+        "description": "all / hs300 / zz500 / zz1000 / custom"
+    },
+    "stock_list": {
+        "type": "list",
+        "default": [],
+        "description": "自定义股票池"
     }
 }
 
@@ -17,88 +27,61 @@ PARAM_SCHEMA = {
 def generate(params):
     lookback = params.get("lookback_days", 20)
     stock_num = params.get("stock_count", 10)
+    stock_pool_type = params.get("stock_pool_type", "all")
+    stock_list = params.get("stock_list", [])
 
     return f"""
 from jqdata import *
-import numpy as np
+import pandas as pd
+from templates.common import get_stock_pool
+
 
 # =========================
-# 安全下单函数（兼容不同环境）
+# 下单函数
 # =========================
 def _order_target_percent(context, security, percent):
-    if "order_target_value" in globals():
-        return order_target_value(security, context.portfolio.total_value * percent)
-    if hasattr(context, "order_target_value"):
-        return context.order_target_value(security, context.portfolio.total_value * percent)
-    if "order_target_percent" in globals():
-        return order_target_percent(security, percent)
-    if hasattr(context, "order_target_percent"):
-        return context.order_target_percent(security, percent)
-    raise NameError("order_target_percent is not defined")
+    return order_target_percent(security, percent)
 
 
 def _order_target_zero(context, security):
-    if "order_target" in globals():
-        return order_target(security, 0)
-    if "order_target_value" in globals():
-        return order_target_value(security, 0)
-    if hasattr(context, "order_target"):
-        return context.order_target(security, 0)
-    if hasattr(context, "order_target_value"):
-        return context.order_target_value(security, 0)
-    raise NameError("order_target is not defined")
+    return order_target(security, 0)
 
 
 # =========================
 # 初始化
 # =========================
 def initialize(context):
-    set_option('avoid_future_data', True)  # 防未来函数
+    set_option('avoid_future_data', True)   # 防未来函数
+    set_option("use_real_price", True)
+
     g.lookback = {lookback}
     g.stock_num = {stock_num}
+
     run_daily(trade, time='09:35')
 
 
 # =========================
-# 股票池过滤
+# 动量计算（无未来函数）
 # =========================
-def get_stock_pool(context):
-    stocks = get_all_securities('stock').index.tolist()
+def calc_momentum(context, stocks, lookback):
 
-    # 去除ST
-    current_data = get_current_data()
-    stocks = [s for s in stocks if not current_data[s].is_st]
-
-    # 去除停牌
-    stocks = [s for s in stocks if not current_data[s].paused]
-
-    # 去除新股（上市不足60天）
-    stocks = [
-        s for s in stocks 
-        if (context.current_dt.date() - get_security_info(s).start_date).days > 60
-    ]
-
-    return stocks
-
-
-# =========================
-# 动量计算（更稳健）
-# =========================
-def calc_momentum(stocks, lookback):
     df = get_price(
         stocks,
         count=lookback,
+        end_date=context.previous_date,   # 🔥关键：防未来函数
         fields=['close'],
         panel=False
     )
 
-    # pivot 成矩阵
+    if df is None or df.empty:
+        return pd.Series()
+
     price_df = df.pivot(index='time', columns='code', values='close')
 
-    # 收益率 = 终值 / 初值 - 1
-    returns = price_df.iloc[-1] / price_df.iloc[0] - 1
+    if price_df.shape[0] < 2:
+        return pd.Series()
 
-    # 去掉NaN
+    returns = price_df.iloc[-1] / price_df.iloc[0] - 1
     returns = returns.dropna()
 
     return returns
@@ -108,31 +91,42 @@ def calc_momentum(stocks, lookback):
 # 主交易逻辑
 # =========================
 def trade(context):
-    stocks = get_stock_pool(context)
 
-    if len(stocks) == 0:
+    stocks = get_stock_pool(
+        context,
+        stock_pool_type="{stock_pool_type}",
+        stock_list={stock_list}
+    )
+
+    if not stocks:
         return
 
-    returns = calc_momentum(stocks, g.lookback)
+    returns = calc_momentum(context, stocks, g.lookback)
 
-    if len(returns) == 0:
+    if returns is None or len(returns) == 0:
         return
 
-    # 选动量最高的股票
+    # 选动量最高
     top = returns.sort_values(ascending=False).head(g.stock_num)
 
+    target_set = set(top.index)
+    current_positions = list(context.portfolio.positions.keys())
+
     # =========================
-    # 先卖出不在池中的
+    # 先卖出
     # =========================
-    for stock in list(context.portfolio.positions.keys()):
-        if stock not in top.index:
+    for stock in current_positions:
+        if stock not in target_set:
             _order_target_zero(context, stock)
 
     # =========================
-    # 再买入目标股票
+    # 再买入
     # =========================
-    weight = 1.0 / len(top)
+    if len(target_set) == 0:
+        return
 
-    for stock in top.index:
+    weight = 1.0 / len(target_set)
+
+    for stock in target_set:
         _order_target_percent(context, stock, weight)
 """
