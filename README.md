@@ -4,6 +4,7 @@ Quant 项目 README
 
 项目根目录：D:\quant\Quant
 核心工程目录：D:\quant\Quant\Quant-AI-agent-main\Quant-AI-agent-main
+b站视频简介：https://www.bilibili.com/video/BV1p7XMBtE7t/?vd_source=2814fa9e659a246028f3a03cfd3e02d3
 
 一、项目简介
 
